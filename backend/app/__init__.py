@@ -1,1 +1,1 @@
-"""AgriVision FastAPI application package."""
+"""AgriVision API modular monolith."""

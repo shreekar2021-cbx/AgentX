@@ -1,0 +1,5 @@
+import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
+export type Language = 'en' | 'te' | 'hi'
+interface UIState { sidebarCollapsed: boolean; toggleSidebar: () => void; mobileMenuOpen: boolean; setMobileMenuOpen: (open: boolean) => void; searchOpen: boolean; setSearchOpen: (open: boolean) => void; selectedFarm: string; setSelectedFarm: (farm: string) => void; language: Language; setLanguage: (language: Language) => void }
+export const useUI = create<UIState>()(persist((set) => ({ sidebarCollapsed: false, toggleSidebar: () => set(s => ({ sidebarCollapsed: !s.sidebarCollapsed })), mobileMenuOpen: false, setMobileMenuOpen: (mobileMenuOpen) => set({ mobileMenuOpen }), searchOpen: false, setSearchOpen: (searchOpen) => set({ searchOpen }), selectedFarm: 'Green Valley Farm', setSelectedFarm: (selectedFarm) => set({ selectedFarm }), language: 'en', setLanguage: (language) => set({ language }) }), { name: 'agrivision-ui', partialize: s => ({ sidebarCollapsed: s.sidebarCollapsed, selectedFarm: s.selectedFarm, language: s.language }) }))

@@ -1,106 +1,31 @@
-"""Deterministic nearby report matching and outbreak alert gating."""
-
-import math
-from datetime import datetime, timedelta
-from uuid import UUID
-
-from app.schemas.enums import AnalysisState, ReviewStatus
-from app.schemas.risk import OutbreakAssessment, OutbreakInput, ReportEvidence
-from app.utils.geography import haversine_distance_km
+from app.schemas.intelligence import CropHealthResult, NearbyMatch, OutbreakResult, Severity, SpreadPotential, WeatherResult
 
 
 class OutbreakAgent:
-    """Score corroborated local evidence; leave persistence and delivery to services."""
+    """Conservative local cluster signal, never a confirmed outbreak declaration."""
 
-    def __init__(
-        self,
-        *,
-        radius_km: float = 10,
-        lookback_days: int = 14,
-        alert_threshold: float = 0.60,
-    ) -> None:
-        if not math.isfinite(radius_km) or not 0 < radius_km <= 50:
-            raise ValueError("radius_km must be between 0 and 50")
-        if lookback_days <= 0:
-            raise ValueError("lookback_days must be positive")
-        if not math.isfinite(alert_threshold) or not 0 <= alert_threshold <= 1:
-            raise ValueError("alert_threshold must be between 0 and 1")
-        self.radius_km = radius_km
-        self.lookback_days = lookback_days
-        self.alert_threshold = max(0.60, alert_threshold)
-
-    def assess(self, request: OutbreakInput) -> OutbreakAssessment:
-        source = request.source_report
-        cutoff = request.evaluated_at - timedelta(days=self.lookback_days)
-        can_match = (
-            source.location is not None
-            and source.commodity_id is not None
-            and source.canonical_disease_code is not None
-            and self._qualifies(source, cutoff, request.evaluated_at)
-        )
-
-        matching_farmers: set[UUID] = set()
-        if can_match:
-            for report in request.nearby_reports:
-                if report.report_id == source.report_id or report.farmer_id == source.farmer_id:
-                    continue
-                if report.commodity_id != source.commodity_id:
-                    continue
-                if report.canonical_disease_code != source.canonical_disease_code:
-                    continue
-                if not self._qualifies(report, cutoff, request.evaluated_at):
-                    continue
-                if report.location is None:
-                    continue
-                if haversine_distance_km(
-                    source.location.latitude,
-                    source.location.longitude,
-                    report.location.latitude,
-                    report.location.longitude,
-                ) <= self.radius_km:
-                    matching_farmers.add(report.farmer_id)
-
-        individual = request.risk.individual_risk
-        community = min(1.0, individual + min(len(matching_farmers) * 0.15, 0.50))
-        alert = False
-        analysis = request.crop_analysis
-
-        if analysis.confidence < 0.70 and source.review_status != ReviewStatus.VERIFIED:
-            reason = "Monitor and request expert review: the crop analysis has low confidence."
-        elif not can_match:
-            reason = "Monitor and request expert review: location, canonical crop/problem, or eligible report evidence is missing."
-        elif analysis.spread_potential in {"low", "unknown"}:
-            reason = "Monitor and request expert review: spread potential is low or uncertain."
-        elif community < 0.30:
-            reason = "Monitor: the deterministic community risk score is below the advisory threshold."
-        elif len(matching_farmers) < 2:
-            reason = (
-                "Advisory for expert review: fewer than three distinct farmers have "
-                "qualifying local reports."
-            )
-        elif community < self.alert_threshold:
-            reason = "Advisory: corroborated community risk is below the nearby alert threshold."
+    def detect(self, crop_health: CropHealthResult, nearby: list[NearbyMatch], weather: WeatherResult, *, allow_synthetic: bool = False) -> OutbreakResult:
+        finding = crop_health.finding
+        real = [item for item in nearby if not item.is_synthetic and item.age_hours <= 168 and item.severity != Severity.LOW]
+        synthetic = [item for item in nearby if item.is_synthetic and item.age_hours <= 168 and item.severity != Severity.LOW]
+        real_owners = {item.owner_id for item in real}
+        synthetic_owners = {item.owner_id for item in synthetic}
+        # Never combine simulated and real reports to meet a cluster threshold.
+        synthetic_evidence = allow_synthetic and len(real_owners) < 3 and len(synthetic_owners) >= 3
+        relevant = synthetic if synthetic_evidence else real
+        distinct = {item.owner_id for item in relevant}
+        strong_enough = finding.confidence >= 0.65 and finding.severity != Severity.LOW and finding.spread_potential in (SpreadPotential.MODERATE, SpreadPotential.HIGH)
+        # A local knowledge fallback is intentionally low-confidence and cannot trigger alerts.
+        alert = strong_enough and len(distinct) >= 3
+        if alert:
+            prefix = "Synthetic development cluster" if synthetic_evidence else "Possible cluster"
+            reason = f"{prefix}: {len(distinct)} other recent {finding.possible_problem} observations within the selected radius. Verify with local agricultural authorities."
+        elif finding.confidence < 0.65:
+            reason = "No cluster alert: the possible issue has insufficient analysis confidence."
         else:
-            alert = True
-            level = "critical" if community >= 0.80 else "warning"
-            reason = (
-                f"{level.capitalize()} nearby alert: {len(matching_farmers) + 1} distinct "
-                f"farmers have qualifying reports of the same crop problem within "
-                f"{self.radius_km:g} km during the last {self.lookback_days} days."
-            )
-
-        return OutbreakAssessment(
-            individual_risk=individual,
-            community_risk=community,
-            nearby_alert=alert,
-            alert_reason=reason,
-        )
-
-    @staticmethod
-    def _qualifies(report: ReportEvidence, cutoff: datetime, evaluated_at: datetime) -> bool:
-        return (
-            report.analysis_state == AnalysisState.SUCCEEDED
-            and report.review_status in {ReviewStatus.PENDING, ReviewStatus.VERIFIED}
-            and cutoff <= report.created_at <= evaluated_at
-            and (report.confidence >= 0.70 or report.review_status == ReviewStatus.VERIFIED)
-        )
+            reason = "No conservative outbreak threshold was met. Continue normal monitoring."
+        radius = min(10.0, max((item.distance_km for item in relevant), default=0.0) + 1.0) if alert else 0.0
+        cluster_confidence = min(0.9, round(finding.confidence * min(1, len(distinct) / 5), 2)) if alert else 0.0
+        if weather.current and not weather.stale and weather.source in ("LIVE", "CACHED") and weather.current.relative_humidity_pct >= 85 and finding.spread_potential == SpreadPotential.HIGH and alert:
+            reason += " Current humidity supports closer monitoring."
+        return OutbreakResult(nearby_alert=alert, alert_reason=reason, cluster_size=len(distinct), risk_radius_km=round(radius, 1), confidence=cluster_confidence, evidence_is_synthetic=synthetic_evidence)

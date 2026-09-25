@@ -1,67 +1,63 @@
-"""Shared API response and error contracts."""
-
-from datetime import datetime, timezone
-from typing import Generic, Literal, TypeVar
+from datetime import datetime
+from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
-
-T = TypeVar("T")
+from pydantic import BaseModel, Field
 
 
-class SourceInfo(BaseModel):
-    provider: str
+class SourceStatus(StrEnum):
+    LIVE = "LIVE"
+    CACHED = "CACHED"
+    FALLBACK = "FALLBACK"
+    DEMO = "DEMO"
+
+
+class Severity(StrEnum):
+    LOW = "low"
+    MODERATE = "moderate"
+    HIGH = "high"
+
+
+class Coordinate(BaseModel):
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+
+
+class FarmRead(BaseModel):
+    id: UUID
+    name: str
+    district: str
+    area_acres: float = Field(ge=0)
+    created_at: datetime
+
+
+class CropReportCreate(BaseModel):
+    field_id: UUID
+    crop_id: UUID
+    symptom_description: str = Field(min_length=10, max_length=4000)
+    notes: str | None = Field(default=None, max_length=4000)
+    observed_at: datetime
+    location: Coordinate | None = None
+
+
+class CropReportRead(BaseModel):
+    id: UUID
+    user_id: UUID
+    crop_id: UUID
     status: str
-    observed_at: datetime | None = None
-    fetched_at: datetime | None = None
-    expires_at: datetime | None = None
-    is_stale: bool = False
-
-
-class ApiWarning(BaseModel):
-    code: str
-    message: str
-
-
-class ResponseMeta(BaseModel):
-    request_id: UUID | None = None
-    schema_version: str = "1"
-    generated_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
-    sources: list[SourceInfo] = Field(default_factory=list)
-    warnings: list[ApiWarning] = Field(default_factory=list)
-
-
-class ApiResponse(BaseModel, Generic[T]):
-    data: T
-    meta: ResponseMeta
-
-
-class ErrorDetail(BaseModel):
-    code: str
-    message: str
-    fields: dict[str, str] | None = None
-    retryable: bool = False
-
-
-class ErrorMeta(BaseModel):
-    request_id: UUID | None = None
+    severity: Severity | None
+    created_at: datetime
 
 
 class ApiErrorResponse(BaseModel):
-    error: ErrorDetail
-    meta: ErrorMeta
+    code: str
+    message: str
+    request_id: str | None = None
 
 
 class HealthResponse(BaseModel):
-    status: Literal["healthy"] = "healthy"
-
-
-class ReadinessResponse(BaseModel):
-    status: Literal["ready", "not_ready"]
-    dependencies: dict[str, str]
-
-
-class DatabaseModel(BaseModel):
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+    status: str
+    environment: str
+    database: str
+    timestamp: datetime
+    demo_mode: bool = False
