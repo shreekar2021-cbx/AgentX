@@ -1,0 +1,1 @@
+"""AgriVision FastAPI application package."""
