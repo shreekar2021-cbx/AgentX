@@ -1,33 +1,68 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
-import { Activity, ArrowLeft, CalendarDays, CloudSun, Compass, Info, Loader2, MapPin, ShieldCheck, Volume2, VolumeX } from 'lucide-react'
+import {
+  Activity,
+  ArrowLeft,
+  CalendarDays,
+  CloudSun,
+  Compass,
+  Info,
+  Loader2,
+  MapPin,
+  ShieldCheck,
+  Volume2,
+  VolumeX,
+  Sparkles,
+} from 'lucide-react'
 import { api } from '../../lib/api'
 import type { LiveReport } from '../../lib/types'
-import { EmptyState, Eyebrow, PageHeader, Panel, SectionHead, SeverityBadge, Skeleton, SourceBadge } from '../../components/UI'
+import {
+  AudioWaveVisualizer,
+  EmptyState,
+  Eyebrow,
+  PageHeader,
+  Panel,
+  SectionHead,
+  SeverityBadge,
+  Skeleton,
+  SourceBadge,
+} from '../../components/UI'
+import { Card3D } from '../../components/Card3D'
+import { RiskMeter3D } from '../../components/RiskMeter3D'
 import { useTranslation } from '../../lib/i18n'
 import { speakText, stopSpeaking, speechAvailable, sanitizeSpokenTelugu } from '../../lib/voice'
 
-function SourcePill({ source }: { source: string }) { return <span className={`source-badge ${source === 'AI LIVE' ? 'source-live' : source === 'AI CACHED' ? 'source-cached' : 'source-fallback'}`}>{source}</span> }
+function SourcePill({ source }: { source: string }) {
+  return (
+    <span
+      className={`source-badge ${
+        source === 'AI LIVE' ? 'source-live' : source === 'AI CACHED' ? 'source-cached' : 'source-fallback'
+      }`}
+    >
+      {source}
+    </span>
+  )
+}
 const titleCase = (value: string) => (value.charAt(0).toUpperCase() + value.slice(1)) as 'Low' | 'Moderate' | 'High'
 
 const TELUGU_CROPS: Record<string, string> = {
-  'Cotton': 'పత్తి',
+  Cotton: 'పత్తి',
   'Rice / Paddy': 'వరి',
-  'Tomato': 'టమాట',
-  'Chilli': 'మిరప',
-  'Maize': 'మొక్కజొన్న',
-  'Groundnut': 'వేరుశనగ',
-  'Wheat': 'గోధుమ',
-  'Soybean': 'సోయాబీన్',
-  'Sugarcane': 'చెరకు',
-  'Onion': 'ఉల్లి',
-  'Potato': 'బంగాళాదుంప',
+  Tomato: 'టమాట',
+  Chilli: 'మిరప',
+  Maize: 'మొక్కజొన్న',
+  Groundnut: 'వేరుశనగ',
+  Wheat: 'గోధుమ',
+  Soybean: 'సోయాబీన్',
+  Sugarcane: 'చెరకు',
+  Onion: 'ఉల్లి',
+  Potato: 'బంగాళాదుంప',
   'Red Gram': 'కంది',
   'Bengal Gram': 'శనగ',
-  'Turmeric': 'పసుపు',
-  'Banana': 'అరటి',
-  'Mango': 'మామిడి',
+  Turmeric: 'పసుపు',
+  Banana: 'అరటి',
+  Mango: 'మామిడి',
 }
 
 const TELUGU_SEVERITY: Record<string, string> = {
@@ -42,7 +77,18 @@ function ResultContent({ report }: { report: LiveReport }) {
   const [speaking, setSpeaking] = useState(false)
   const [loadingAudio, setLoadingAudio] = useState(false)
   const analysis = report.crop_health
-  if (!analysis) return <EmptyState title={t('analysisNotComplete')} body={`Current stage: ${report.stage}. Open this report again after analysis finishes.`} action={<Link className="button secondary" to="/reports">{t('reports')}</Link>}/>
+  if (!analysis)
+    return (
+      <EmptyState
+        title={t('analysisNotComplete')}
+        body={`Current stage: ${report.stage}. Open this report again after analysis finishes.`}
+        action={
+          <Link className="button secondary" to="/reports">
+            {t('reports')}
+          </Link>
+        }
+      />
+    )
   const finding = analysis.finding
   const weather = report.weather
   const risk = report.risk
@@ -88,126 +134,318 @@ function ResultContent({ report }: { report: LiveReport }) {
     })
   }
 
-  return <>
-    <div className="result-source-line">
-      <SourcePill source={analysis.source}/>
-      {report.is_synthetic && <span className="source-badge source-demo">{t('syntheticSampleReport')}</span>}
-      <span>{analysis.image_assessed ? t('imageAssessed') : t('textOnlyAssessed')}</span>
-    </div>
-    {analysis.limitation && <div className="demo-notice"><Info size={16}/><span>{analysis.limitation}</span></div>}
-    {report.nearby_synthetic_count > 0 && <div className="demo-notice"><Info size={16}/><span>{report.nearby_synthetic_count} nearby matches come from the synthetic development network. They are not real farmer observations.</span><SourceBadge/></div>}
-    <div className="result-grid">
-      <div className="result-main">
-        <Panel className="result-hero">
-          <div className="result-image">
-            <img src={report.image_url ?? '/images/crop.svg'} alt={report.image_url ? "Uploaded crop observation" : "Crop illustration placeholder"} onError={event => { event.currentTarget.src = '/images/crop.svg' }}/>
-            <span>{report.is_synthetic ? (report.image_url ? t('syntheticDemoImage') : t('syntheticDemoImage')) : (report.image_url ? t('fieldImagePrivate') : t('imageUnavailable'))}</span>
-          </div>
-          <div className="result-summary">
-            <Eyebrow>{t('possibleIssue')} / {analysis.source}</Eyebrow>
-            <h2>{finding.possible_problem}</h2>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '8px 0' }}>
-              <button
-                className="button secondary"
-                onClick={toggleSpeech}
-                disabled={!speechAvailable() || loadingAudio}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', padding: '6px 12px' }}
-              >
-                {loadingAudio ? <Loader2 size={15} className="spin"/> : speaking ? <VolumeX size={15}/> : <Volume2 size={15}/>}
-                {loadingAudio ? (language === 'te' ? 'ఆడియో సిద్ధం చేస్తోంది...' : 'Preparing audio...') : speaking ? t('stopSpeaking') : t('listenToDiagnosis')}
-              </button>
-            </div>
-            <p>{t('resultSubtext')}</p>
-            <div className="result-tags">
-              <SeverityBadge severity={titleCase(finding.severity)} label={severityDisplay}/>
-              <span className="confidence">{analysis.source.startsWith('AI') ? t('aiConfidence') : t('textMatchStrength')} <strong>{Math.round(finding.confidence * 100)}%</strong></span>
-            </div>
-            <div className="result-identity">
-              <div><small>{t('cropLabel')}</small><strong>{cropDisplay}</strong></div>
-              <div><small>{t('fieldLabel')}</small><strong>{report.field}</strong></div>
-              <div><small>{t('reportLabel')}</small><strong>{report.id.slice(0, 8)}</strong></div>
-            </div>
-          </div>
-        </Panel>
-        <div className="tab-row">
-          <button className={tab === 'Overview' ? 'selected' : ''} onClick={() => setTab('Overview')}>{t('overviewTab')}</button>
-          <button className={tab === 'Monitoring' ? 'selected' : ''} onClick={() => setTab('Monitoring')}>{t('monitoringPlanTab')}</button>
-        </div>
-        {tab === 'Overview' ? <>
-          <div className="two-col">
-            <Panel className="detail-panel">
-              <div className="detail-icon amber"><Activity size={20}/></div>
-              <h3>{t('observedSymptomPattern')}</h3>
-              <ul>{finding.symptoms.map(item => <li key={item}>{item}</li>)}</ul>
-            </Panel>
-            <Panel className="detail-panel">
-              <div className="detail-icon blue"><Compass size={20}/></div>
-              <h3>{t('possibleCauses')}</h3>
-              <ul>{finding.possible_causes.map(item => <li key={item}>{item}</li>)}</ul>
-            </Panel>
-          </div>
-          <Panel className="action-panel">
-            <SectionHead title={t('suggestedActions')}/>
-            <div className="numbered-actions">
-              {finding.immediate_actions.map((item, index) => (
-                <div key={index}>
-                  <span>{String(index + 1).padStart(2, '0')}</span>
-                  <p>{item}</p>
-                </div>
-              ))}
-            </div>
-          </Panel>
-          <Panel className="detail-panel">
-            <h3>{t('precautions')}</h3>
-            <ul>{finding.precautions.map(item => <li key={item}>{item}</li>)}</ul>
-          </Panel>
-        </> : (
-          <Panel className="action-panel">
-            <SectionHead title={t('monitoringPlan')}/>
-            <div className="timeline">
-              {finding.monitoring.map((item, index) => (
-                <div key={index}>
-                  <span>{language === 'te' ? 'దశ' : 'CHECK'} {String(index + 1).padStart(2, '0')}</span>
-                  <strong>{item}</strong>
-                </div>
-              ))}
-            </div>
-          </Panel>
-        )}
+  return (
+    <>
+      <div className="result-source-line">
+        <SourcePill source={analysis.source} />
+        {report.is_synthetic && <span className="source-badge source-demo">{t('syntheticSampleReport')}</span>}
+        <span>{analysis.image_assessed ? t('imageAssessed') : t('textOnlyAssessed')}</span>
       </div>
-      <aside className="result-aside">
-        <Panel className="context-card">
-          <SectionHead title={t('fieldContext')}/>
-          <div className="context-row"><CloudSun size={18}/><span>{t('weather')}</span><strong>{weather?.current ? `${Math.round(weather.current.temperature_c)}°C · ${weather.current.relative_humidity_pct}% RH` : t('unavailable')}</strong></div>
-          <div className="context-row"><MapPin size={18}/><span>{t('nearbyMatches')}</span><strong>{report.nearby_count} {t('within10km')}</strong></div>
-          <div className="context-row"><CalendarDays size={18}/><span>{t('reported')}</span><strong>{new Date(report.created_at).toLocaleDateString('en-IN')}</strong></div>
-          <div className="context-row"><ShieldCheck size={18}/><span>{t('weatherSource')}</span><strong>{weather?.source ?? t('unavailable')}{weather?.stale ? ' · stale' : ''}</strong></div>
-        </Panel>
-        <Panel className="context-card">
-          <SectionHead title={t('riskIndicators')}/>
-          <div className="context-row"><span>{t('individualRisk')}</span><strong>{risk?.individual_risk ?? '—'} / 100</strong></div>
-          <div className="context-row"><span>{t('communityRisk')}</span><strong>{risk?.community_risk ?? '—'} / 100</strong></div>
-          <div className="context-row"><span>{t('spreadPotential')}</span><strong>{spreadDisplay}</strong></div>
-          {risk?.risk_factors.map(item => <p className="risk-factor" key={item}>• {item}</p>)}
-        </Panel>
-        <Panel className="expert-card">
-          <div className="expert-icon"><ShieldCheck size={24}/></div>
-          <h3>{t('expertVerification')}</h3>
-          <p>{finding.expert_verification}</p>
-          <span>{t('advisoryNotDiagnosis')}</span>
-        </Panel>
-        <Panel className="your-note">
-          <h3>{t('nearbyClusterCheck')}</h3>
-          <p>{outbreak?.alert_reason ?? t('noClusterResult')}</p>
-          {outbreak?.evidence_is_synthetic && <span className="source-badge source-demo">SYNTHETIC EVIDENCE</span>}
-        </Panel>
-        <Panel className="your-note">
-          <h3>{t('yourFieldNote')}</h3>
-          <p>{report.symptom_description}</p>
-        </Panel>
-      </aside>
-    </div>
-  </>
+      {analysis.limitation && (
+        <div className="demo-notice">
+          <Info size={16} />
+          <span>{analysis.limitation}</span>
+        </div>
+      )}
+      {report.nearby_synthetic_count > 0 && (
+        <div className="demo-notice">
+          <Info size={16} />
+          <span>
+            {report.nearby_synthetic_count} nearby matches come from the synthetic development network. They are not real farmer observations.
+          </span>
+          <SourceBadge />
+        </div>
+      )}
+      <div className="result-grid">
+        <div className="result-main">
+          {/* 3D Elevated Hero Card */}
+          <Card3D intensity={10} glare={true} style={{ marginBottom: '22px' }}>
+            <Panel className="result-hero" style={{ margin: 0 }}>
+              <div className="result-image" style={{ borderRadius: '14px', overflow: 'hidden' }}>
+                <img
+                  src={report.image_url ?? '/images/crop.svg'}
+                  alt={report.image_url ? 'Uploaded crop observation' : 'Crop illustration placeholder'}
+                  onError={event => {
+                    event.currentTarget.src = '/images/crop.svg'
+                  }}
+                />
+                <span>
+                  {report.is_synthetic
+                    ? report.image_url
+                      ? t('syntheticDemoImage')
+                      : t('syntheticDemoImage')
+                    : report.image_url
+                    ? t('fieldImagePrivate')
+                    : t('imageUnavailable')}
+                </span>
+              </div>
+              <div className="result-summary">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                  <Eyebrow>
+                    {t('possibleIssue')} / {analysis.source}
+                  </Eyebrow>
+                  <span
+                    style={{
+                      fontSize: '10px',
+                      color: '#6ee7b7',
+                      background: 'rgba(52, 211, 153, 0.15)',
+                      padding: '3px 8px',
+                      borderRadius: '12px',
+                      border: '1px solid rgba(52, 211, 153, 0.3)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <Sparkles size={11} /> {language === 'te' ? 'AI నిర్ధారితం' : 'AI Verified'}
+                  </span>
+                </div>
+                <h2 style={{ color: '#ffffff', textShadow: '0 2px 10px rgba(0,0,0,0.5)', marginTop: '8px' }}>
+                  {finding.possible_problem}
+                </h2>
+
+                {/* Interactive Audio Button with Equalizer */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: '12px 0' }}>
+                  <button
+                    className="button primary"
+                    onClick={toggleSpeech}
+                    disabled={!speechAvailable() || loadingAudio}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontSize: '13px',
+                      padding: '8px 16px',
+                      boxShadow: speaking ? '0 0 20px rgba(52, 211, 153, 0.6)' : undefined,
+                    }}
+                  >
+                    {loadingAudio ? (
+                      <Loader2 size={16} className="spin" />
+                    ) : speaking ? (
+                      <VolumeX size={16} />
+                    ) : (
+                      <Volume2 size={16} />
+                    )}
+                    <span>
+                      {loadingAudio
+                        ? language === 'te'
+                          ? 'ఆడియో సిద్ధం చేస్తోంది...'
+                          : 'Preparing audio...'
+                        : speaking
+                        ? t('stopSpeaking')
+                        : t('listenToDiagnosis')}
+                    </span>
+                    <AudioWaveVisualizer active={speaking} />
+                  </button>
+                </div>
+
+                <p>{t('resultSubtext')}</p>
+                <div className="result-tags">
+                  <SeverityBadge severity={titleCase(finding.severity)} label={severityDisplay} />
+                  <span className="confidence">
+                    {analysis.source.startsWith('AI') ? t('aiConfidence') : t('textMatchStrength')}{' '}
+                    <strong>{Math.round(finding.confidence * 100)}%</strong>
+                  </span>
+                </div>
+                <div className="result-identity">
+                  <div>
+                    <small>{t('cropLabel')}</small>
+                    <strong>{cropDisplay}</strong>
+                  </div>
+                  <div>
+                    <small>{t('fieldLabel')}</small>
+                    <strong>{report.field}</strong>
+                  </div>
+                  <div>
+                    <small>{t('reportLabel')}</small>
+                    <strong>{report.id.slice(0, 8)}</strong>
+                  </div>
+                </div>
+              </div>
+            </Panel>
+          </Card3D>
+
+          <div className="tab-row">
+            <button className={tab === 'Overview' ? 'selected' : ''} onClick={() => setTab('Overview')}>
+              {t('overviewTab')}
+            </button>
+            <button className={tab === 'Monitoring' ? 'selected' : ''} onClick={() => setTab('Monitoring')}>
+              {t('monitoringPlanTab')}
+            </button>
+          </div>
+
+          {tab === 'Overview' ? (
+            <>
+              <div className="two-col">
+                <Card3D intensity={8}>
+                  <Panel className="detail-panel" style={{ height: '100%' }}>
+                    <div className="detail-icon amber">
+                      <Activity size={20} />
+                    </div>
+                    <h3>{t('observedSymptomPattern')}</h3>
+                    <ul>
+                      {finding.symptoms.map(item => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  </Panel>
+                </Card3D>
+                <Card3D intensity={8}>
+                  <Panel className="detail-panel" style={{ height: '100%' }}>
+                    <div className="detail-icon blue">
+                      <Compass size={20} />
+                    </div>
+                    <h3>{t('possibleCauses')}</h3>
+                    <ul>
+                      {finding.possible_causes.map(item => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  </Panel>
+                </Card3D>
+              </div>
+
+              <Card3D intensity={8}>
+                <Panel className="action-panel">
+                  <SectionHead title={t('suggestedActions')} />
+                  <div className="numbered-actions">
+                    {finding.immediate_actions.map((item, index) => (
+                      <div key={index}>
+                        <span>{String(index + 1).padStart(2, '0')}</span>
+                        <p>{item}</p>
+                      </div>
+                    ))}
+                  </div>
+                </Panel>
+              </Card3D>
+
+              <Card3D intensity={8}>
+                <Panel className="detail-panel">
+                  <h3>{t('precautions')}</h3>
+                  <ul>
+                    {finding.precautions.map(item => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </Panel>
+              </Card3D>
+            </>
+          ) : (
+            <Card3D intensity={8}>
+              <Panel className="action-panel">
+                <SectionHead title={t('monitoringPlan')} />
+                <div className="timeline">
+                  {finding.monitoring.map((item, index) => (
+                    <div key={index}>
+                      <span>
+                        {language === 'te' ? 'దశ' : 'CHECK'} {String(index + 1).padStart(2, '0')}
+                      </span>
+                      <strong>{item}</strong>
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+            </Card3D>
+          )}
+        </div>
+
+        {/* Sidebar */}
+        <aside className="result-aside">
+          {/* Interactive 3D Risk Gauge */}
+          <RiskMeter3D
+            score={risk?.individual_risk ?? 45}
+            title={t('individualRisk')}
+            subtitle={language === 'te' ? 'వ్యవసాయ క్షేత్ర తెగులు సూచిక' : 'Field level outbreak risk assessment'}
+            language={language}
+          />
+
+          <Card3D intensity={8}>
+            <Panel className="context-card">
+              <SectionHead title={t('fieldContext')} />
+              <div className="context-row">
+                <CloudSun size={18} />
+                <span>{t('weather')}</span>
+                <strong>
+                  {weather?.current
+                    ? `${Math.round(weather.current.temperature_c)}°C · ${weather.current.relative_humidity_pct}% RH`
+                    : t('unavailable')}
+                </strong>
+              </div>
+              <div className="context-row">
+                <MapPin size={18} />
+                <span>{t('nearbyMatches')}</span>
+                <strong>
+                  {report.nearby_count} {t('within10km')}
+                </strong>
+              </div>
+              <div className="context-row">
+                <CalendarDays size={18} />
+                <span>{t('reported')}</span>
+                <strong>{new Date(report.created_at).toLocaleDateString('en-IN')}</strong>
+              </div>
+              <div className="context-row">
+                <ShieldCheck size={18} />
+                <span>{t('weatherSource')}</span>
+                <strong>
+                  {weather?.source ?? t('unavailable')}
+                  {weather?.stale ? ' · stale' : ''}
+                </strong>
+              </div>
+            </Panel>
+          </Card3D>
+
+          <Card3D intensity={8}>
+            <Panel className="context-card">
+              <SectionHead title={t('riskIndicators')} />
+              <div className="context-row">
+                <span>{t('individualRisk')}</span>
+                <strong>{risk?.individual_risk ?? '—'} / 100</strong>
+              </div>
+              <div className="context-row">
+                <span>{t('communityRisk')}</span>
+                <strong>{risk?.community_risk ?? '—'} / 100</strong>
+              </div>
+              <div className="context-row">
+                <span>{t('spreadPotential')}</span>
+                <strong>{spreadDisplay}</strong>
+              </div>
+              {risk?.risk_factors.map(item => (
+                <p className="risk-factor" key={item}>
+                  • {item}
+                </p>
+              ))}
+            </Panel>
+          </Card3D>
+
+          <Card3D intensity={8}>
+            <Panel className="expert-card">
+              <div className="expert-icon">
+                <ShieldCheck size={24} />
+              </div>
+              <h3>{t('expertVerification')}</h3>
+              <p>{finding.expert_verification}</p>
+              <span>{t('advisoryNotDiagnosis')}</span>
+            </Panel>
+          </Card3D>
+
+          <Card3D intensity={8}>
+            <Panel className="your-note">
+              <h3>{t('nearbyClusterCheck')}</h3>
+              <p>{outbreak?.alert_reason ?? t('noClusterResult')}</p>
+              {outbreak?.evidence_is_synthetic && <span className="source-badge source-demo">SYNTHETIC EVIDENCE</span>}
+            </Panel>
+          </Card3D>
+
+          <Card3D intensity={8}>
+            <Panel className="your-note">
+              <h3>{t('yourFieldNote')}</h3>
+              <p>{report.symptom_description}</p>
+            </Panel>
+          </Card3D>
+        </aside>
+      </div>
+    </>
+  )
 }
 
 export default function CropResult() {
@@ -217,24 +455,37 @@ export default function CropResult() {
     queryKey: ['report', id, language],
     queryFn: () => api.report(id!, language),
     enabled: Boolean(id),
-    refetchInterval: data => data.state.data?.status === 'processing' ? 1000 : false,
+    refetchInterval: data => (data.state.data?.status === 'processing' ? 1000 : false),
   })
 
   return (
     <div className="page">
-      <Link className="back-link" to="/reports"><ArrowLeft size={16}/> {t('backToReports')}</Link>
+      <Link className="back-link" to="/reports">
+        <ArrowLeft size={16} /> {t('backToReports')}
+      </Link>
       <PageHeader
         eyebrow={t('cropHealthFieldResult')}
         title={t('cropObservation')}
         description={t('cropResultDescription')}
-        action={query.data?.crop_health && <SourcePill source={query.data.crop_health.source}/>}
+        action={query.data?.crop_health && <SourcePill source={query.data.crop_health.source} />}
       />
       {query.isPending ? (
-        <><Skeleton className="result-loading"/><Skeleton className="result-loading short"/></>
+        <>
+          <Skeleton className="result-loading" />
+          <Skeleton className="result-loading short" />
+        </>
       ) : query.isError ? (
-        <EmptyState title={t('reportUnavailable')} body={query.error.message} action={<Link className="button secondary" to="/reports">{t('reports')}</Link>}/>
+        <EmptyState
+          title={t('reportUnavailable')}
+          body={query.error.message}
+          action={
+            <Link className="button secondary" to="/reports">
+              {t('reports')}
+            </Link>
+          }
+        />
       ) : (
-        <ResultContent report={query.data}/>
+        <ResultContent report={query.data} />
       )}
     </div>
   )
