@@ -15,14 +15,14 @@ interface ThemeOption {
 const THEMES: ThemeOption[] = [
   {
     id: 'emerald',
-    nameEn: 'Emerald Biotech (Default)',
+    nameEn: 'Emerald Biotech',
     nameTe: 'బయో ఎమరాల్డ్ (డిఫాల్ట్)',
     dot: '#10b981',
     accent: '#34d399',
   },
   {
     id: 'cyber',
-    nameEn: 'Cyber Agritech',
+    nameEn: 'Cyber Agritech (Default)',
     nameTe: 'సైబర్ అగ్రిటెక్ (నీలి రంగు)',
     dot: '#06b6d4',
     accent: '#a3e635',
@@ -47,9 +47,9 @@ export function ThemeSwitcher() {
   const { language } = useTranslation()
   const [currentTheme, setCurrentTheme] = useState<ThemeId>(() => {
     if (typeof window !== 'undefined') {
-      return (localStorage.getItem('agrivision-theme') as ThemeId) || 'emerald'
+      return (localStorage.getItem('agrivision-theme') as ThemeId) || 'cyber'
     }
-    return 'emerald'
+    return 'cyber'
   })
   const [open, setOpen] = useState(false)
 
@@ -70,14 +70,17 @@ export function ThemeSwitcher() {
     const saved = localStorage.getItem('agrivision-theme') as ThemeId
     if (saved && saved !== 'emerald') {
       document.documentElement.setAttribute('data-theme', saved)
+    } else if (!saved) {
+      document.documentElement.setAttribute('data-theme', 'cyber')
     }
   }, [])
 
   const activeThemeObj = THEMES.find(t => t.id === currentTheme) || THEMES[0]
 
   return (
-    <div style={{ position: 'relative', display: 'inline-block' }}>
+    <div className="theme-switcher" style={{ position: 'relative', display: 'inline-block' }}>
       <button
+        className="theme-switcher-trigger"
         onClick={() => setOpen(!open)}
         title="Experiment Color Themes"
         aria-label="Experiment Color Themes"
@@ -85,7 +88,7 @@ export function ThemeSwitcher() {
           display: 'inline-flex',
           alignItems: 'center',
           gap: '8px',
-          background: 'rgba(18, 38, 28, 0.95)',
+          background: 'rgba(12, 24, 36, 0.95)',
           border: `1.5px solid ${activeThemeObj.dot}`,
           borderRadius: '20px',
           padding: '6px 14px',
@@ -117,17 +120,18 @@ export function ThemeSwitcher() {
             style={{ position: 'fixed', inset: 0, zIndex: 110, cursor: 'default' }}
           />
           <div
+            className="theme-switcher-menu"
             style={{
               position: 'absolute',
               top: 'calc(100% + 8px)',
               right: 0,
               zIndex: 120,
               width: '240px',
-              background: '#091510',
-              border: '1px solid rgba(52, 211, 153, 0.4)',
+              background: '#0c1824',
+              border: `1px solid ${activeThemeObj.dot}66`,
               borderRadius: '14px',
               padding: '8px',
-              boxShadow: '0 20px 50px rgba(0, 0, 0, 0.8), 0 0 20px rgba(16, 185, 129, 0.15)',
+              boxShadow: `0 20px 50px rgba(0, 0, 0, 0.8), 0 0 20px ${activeThemeObj.dot}26`,
               backdropFilter: 'blur(16px)',
             }}
           >
@@ -152,7 +156,7 @@ export function ThemeSwitcher() {
                   style={{
                     background: 'none',
                     border: 'none',
-                    color: '#34d399',
+                    color: activeThemeObj.dot,
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
@@ -180,7 +184,7 @@ export function ThemeSwitcher() {
                       gap: '10px',
                       padding: '8px 12px',
                       borderRadius: '9px',
-                      background: isSelected ? 'rgba(52, 211, 153, 0.16)' : 'transparent',
+                      background: isSelected ? `${t.dot}29` : 'transparent',
                       border: isSelected ? `1px solid ${t.dot}` : '1px solid transparent',
                       color: isSelected ? '#ffffff' : '#d1e5d7',
                       fontSize: '12px',

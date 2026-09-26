@@ -9,7 +9,11 @@ import './styles-extra.css'
 import './styles-phase2.css'
 import './styles-phase3.css'
 import './styles-phase4.css'
+import './styles-cyber.css'
 import 'leaflet/dist/leaflet.css'
+
+const savedTheme = localStorage.getItem('agrivision-theme')
+if (!savedTheme) document.documentElement.setAttribute('data-theme', 'cyber')
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 60_000 } } })
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><QueryClientProvider client={queryClient}><BrowserRouter><App /></BrowserRouter></QueryClientProvider></React.StrictMode>)
