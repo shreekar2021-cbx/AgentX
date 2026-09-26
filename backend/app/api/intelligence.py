@@ -15,10 +15,11 @@ from app.core.errors import AppError
 from app.core.security import Principal, current_principal
 from app.core.uploads import UploadPolicy
 from app.knowledge.catalog import CROPS, ISSUES, normalize_crop
+from app.providers.groq import GroqProvider
 from app.providers.mistral import MistralProvider
 from app.providers.open_meteo import OpenMeteoProvider
 from app.repositories.local import LocalRepository
-from app.schemas.intelligence import NearbyAlertPublic, ReportPublic, WeatherResult
+from app.schemas.intelligence import CropHealthFinding, NearbyAlertPublic, ReportPublic, WeatherResult
 from app.services.location import validate_coordinates
 from app.services.nearby import NearbyReportService
 from app.services.report_orchestrator import ReportOrchestrator
@@ -82,11 +83,101 @@ async def list_reports(principal: Principal = Depends(current_principal), reposi
     return await repository.list_reports(principal.user_id)
 
 
+_TRANSLATED_FINDINGS_CACHE: dict[str, CropHealthFinding] = {}
+
+
+def _localize_risk_factors(factors: list[str], lang: str) -> list[str]:
+    if lang != "te":
+        return factors
+
+    severity_map = {"low": "తక్కువ", "moderate": "మధ్యస్థం", "high": "ఎక్కువ"}
+    season_map = {
+        "monsoon": "వర్షాకాలం / ఖరీఫ్",
+        "kharif": "ఖరీఫ్",
+        "rabi": "రబీ",
+        "summer": "వేసవి",
+        "zaid": "జాయెద్",
+    }
+
+    localized = []
+    for f in factors:
+        lower = f.lower()
+        if lower.startswith("possible issue severity:"):
+            val = f.split(":", 1)[1].strip()
+            localized.append(f"సంభావ్య సమస్య తీవ్రత: {severity_map.get(val.lower(), val)}")
+        elif lower.startswith("assessment confidence:"):
+            val = f.split(":", 1)[1].strip()
+            localized.append(f"అంచనా విశ్వసనీయత: {val}")
+        elif lower.startswith("spread potential:"):
+            val = f.split(":", 1)[1].strip()
+            localized.append(f"వ్యాప్తి సంభావ్యత: {severity_map.get(val.lower(), val)}")
+        elif lower.startswith("reported season:"):
+            val = f.split(":", 1)[1].strip()
+            localized.append(f"నివేదించబడిన కాలం: {season_map.get(val.lower(), val)}")
+        elif "recent nearby field reports" in lower:
+            count = f.split()[0]
+            localized.append(f"{count} సమీప పొలాల పరిశీలనలు")
+        elif "current high humidity may favor spread" in lower:
+            localized.append("ప్రస్తుత అధిక తేమ తెగులు వ్యాప్తికి అనుకూలంగా ఉండవచ్చు")
+        elif "synthetic sample" in lower:
+            localized.append("సింథటిక్ నమూనా; ప్రత్యక్ష వాతావరణం లేదా క్షేత్ర అంచనా లేదు")
+        else:
+            localized.append(f)
+    return localized
+
+
+def _localize_outbreak(reason: str | None, lang: str) -> str | None:
+    if not reason or lang != "te":
+        return reason
+    if "No conservative outbreak threshold was met" in reason:
+        return "ఎలాంటి తీవ్ర వ్యాప్తి హెచ్చరిక పరిమితి నమోదు కాలేదు. సాధారణ పర్యవేక్షణ కొనసాగించండి."
+    return reason
+
+
 @router.get("/reports/{report_id}", response_model=ReportPublic)
-async def get_report(report_id: UUID, principal: Principal = Depends(current_principal), repository: LocalRepository = Depends(get_repository)) -> ReportPublic:
+async def get_report(
+    report_id: UUID,
+    request: Request,
+    language: str = Query("en"),
+    principal: Principal = Depends(current_principal),
+    repository: LocalRepository = Depends(get_repository),
+    settings: Settings = Depends(get_settings),
+) -> ReportPublic:
     report = await repository.get_report(str(report_id), principal.user_id)
     if not report:
         raise AppError(404, "report_not_found", "Report was not found.")
+
+    lang = language.lower().strip()
+    if lang in ("te", "hi"):
+        if report.crop_health and report.crop_health.finding:
+            cache_key = f"{report.id}:{lang}"
+            if cache_key in _TRANSLATED_FINDINGS_CACHE:
+                report.crop_health.finding = _TRANSLATED_FINDINGS_CACHE[cache_key]
+            else:
+                finding = report.crop_health.finding
+                is_already_translated = False
+                if lang == "te" and any("\u0c00" <= ch <= "\u0c7f" for ch in finding.possible_problem):
+                    is_already_translated = True
+                elif lang == "hi" and any("\u0900" <= ch <= "\u097f" for ch in finding.possible_problem):
+                    is_already_translated = True
+
+                if not is_already_translated:
+                    client = getattr(request.app.state, "http_client", None) if request else None
+                    groq = GroqProvider(settings, client)
+                    try:
+                        translated_dict = await groq.translate_finding(finding.model_dump(), target_language=lang)
+                        translated_finding = CropHealthFinding.model_validate(translated_dict)
+                        report.crop_health.finding = translated_finding
+                        _TRANSLATED_FINDINGS_CACHE[cache_key] = translated_finding
+                    except Exception:
+                        pass
+
+        if lang == "te":
+            if report.risk and report.risk.risk_factors:
+                report.risk.risk_factors = _localize_risk_factors(report.risk.risk_factors, "te")
+            if report.outbreak and report.outbreak.alert_reason:
+                report.outbreak.alert_reason = _localize_outbreak(report.outbreak.alert_reason, "te")
+
     return report
 
 

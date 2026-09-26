@@ -75,6 +75,6 @@ async def test_groq_provider_mock_response():
     assert provider.is_configured is True
 
     result = await provider.voice_assist("వరి ఆకులు", language="te")
-    assert result.provider == "groq"
+    assert result.provider.startswith("groq")
     assert "నమస్కారం" in result.reply
     assert len(result.quick_actions) >= 1

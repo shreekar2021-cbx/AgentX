@@ -1,5 +1,6 @@
 """Groq AI provider for ultra-low latency translations and agricultural voice assistance."""
 
+import json
 import logging
 import re
 from typing import Any
@@ -368,3 +369,99 @@ class GroqProvider:
                     "Apply organic neem formulation if early pests appear.",
                 ],
             )
+
+    async def translate_finding(self, finding: dict[str, Any], target_language: str = "te") -> dict[str, Any]:
+        """Translates all text fields in a finding into the target language using Groq."""
+        if not self.is_configured:
+            return finding
+
+        prompt = (
+            f"Translate this agricultural diagnosis JSON into fluent, natural {target_language.upper()} script for Indian farmers.\n"
+            "RULES:\n"
+            "1. Translate ALL text inside: 'possible_problem', 'symptoms', 'possible_causes', 'immediate_actions', 'precautions', 'monitoring', and 'expert_verification'.\n"
+            "2. Ensure the Telugu phrasing is natural, encouraging, and easy for rural farmers to read and listen to.\n"
+            "3. Keep enum values 'severity', 'confidence', and 'spread_potential' unchanged.\n"
+            "4. Return ONLY valid JSON with the exact same structure.\n\n"
+            f"JSON to translate:\n{json.dumps(finding, ensure_ascii=False)}"
+        )
+
+        candidate_models = ["openai/gpt-oss-120b", "qwen/qwen3.8-27b", self.settings.groq_model]
+        for model in candidate_models:
+            try:
+                payload = {
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": "You are an expert Indian agricultural translator. Return ONLY valid JSON matching the input schema."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    "temperature": 0.1,
+                    "response_format": {"type": "json_object"},
+                }
+                headers = {
+                    "Authorization": f"Bearer {self.settings.groq_api_key}",
+                    "Content-Type": "application/json",
+                }
+                response = await self.client.post(
+                    GROQ_CHAT_URL, json=payload, headers=headers, timeout=self.settings.groq_timeout_seconds + 5
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    content = data["choices"][0]["message"]["content"]
+                    parsed = json.loads(content)
+                    if "possible_problem" in parsed and "immediate_actions" in parsed:
+                        parsed["confidence"] = finding.get("confidence", 0.7)
+                        parsed["severity"] = finding.get("severity", "moderate")
+                        parsed["spread_potential"] = finding.get("spread_potential", "moderate")
+                        return parsed
+            except Exception as exc:
+                logger.warning("Groq finding translation failed with model %s: %s", model, exc)
+
+        return finding
+
+    async def generate_spoken_script(self, crop: str, problem: str, actions: list[str], language: str = "te") -> str:
+        """Generates a conversational, phonetically natural spoken audio script in Telugu, specifically written for speech engines to pronounce clearly and smoothly."""
+        if not self.is_configured:
+            actions_spoken = ". ".join(actions[:2])
+            if language == "te":
+                return f"నమస్కారం రైతు సోదరా. మీ {crop} పంటలో {problem} లక్షణాలు గమనించబడ్డాయి. వెంటనే ఈ పనులు చేయండి: {actions_spoken}."
+            return f"Hello farmer. For your {crop} crop, {problem} was observed. Immediate actions: {actions_spoken}."
+
+        prompt = (
+            f"Write a short (40 to 60 words), warm, respectful spoken-word audio voice script in Telugu (తెలుగు) script for an Indian farmer.\n"
+            "This will be read aloud by Text-To-Speech. It must sound like a friendly local agricultural officer speaking directly to the farmer in authentic Telugu.\n"
+            "DO NOT include English words, brackets, asterisks, numbers like '01', or bullet points. Use natural spoken Telugu cadence.\n\n"
+            f"Crop: {crop}\n"
+            f"Issue: {problem}\n"
+            f"Key Actions: {actions[:2]}"
+        )
+
+        candidate_models = ["qwen/qwen3.8-27b", "openai/gpt-oss-120b", self.settings.groq_fast_model]
+        for model in candidate_models:
+            try:
+                payload = {
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": "You write spoken Telugu voice scripts for farmers. Return ONLY the spoken text in Telugu script."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    "temperature": 0.2,
+                    "max_tokens": 200,
+                }
+                headers = {
+                    "Authorization": f"Bearer {self.settings.groq_api_key}",
+                    "Content-Type": "application/json",
+                }
+                response = await self.client.post(
+                    GROQ_CHAT_URL, json=payload, headers=headers, timeout=self.settings.groq_timeout_seconds
+                )
+                if response.status_code == 200:
+                    text = response.json()["choices"][0]["message"]["content"].strip()
+                    cleaned = re.sub(r'[*_#`"\'()]', '', text).strip()
+                    if len(cleaned) > 10:
+                        return cleaned
+            except Exception as exc:
+                logger.warning("Spoken script generation failed on model %s: %s", model, exc)
+
+        actions_spoken = ". ".join(actions[:2])
+        return f"నమస్కారం రైతు సోదరా. మీ {crop} పంటలో {problem} లక్షణాలు గమనించబడ్డాయి. వెంటనే ఈ పనులు చేయండి: {actions_spoken}."
+

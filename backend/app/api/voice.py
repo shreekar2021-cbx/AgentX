@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, File, Request, UploadFile
+from pydantic import BaseModel
 
 from app.core.config import Settings, get_settings
 from app.providers.groq import GroqProvider
@@ -53,3 +54,22 @@ async def transcribe_audio(
     content = await file.read()
     text = await provider.transcribe_audio(content, filename=file.filename or "recording.webm", language=language)
     return {"text": text}
+
+
+class SpokenAdviceRequest(BaseModel):
+    crop: str
+    problem: str
+    actions: list[str] = []
+    language: str = "te"
+
+
+@router.post("/api/voice/spoken-advice")
+async def get_spoken_advice(body: SpokenAdviceRequest, provider: GroqProvider = Depends(get_groq_provider)) -> dict[str, str]:
+    script = await provider.generate_spoken_script(
+        crop=body.crop,
+        problem=body.problem,
+        actions=body.actions,
+        language=body.language,
+    )
+    return {"spoken_text": script, "language": body.language}
+

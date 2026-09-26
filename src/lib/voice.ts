@@ -11,6 +11,26 @@ type SpeechWindow = Window & {
   speechSynthesis?: SpeechSynthesis
 }
 
+let cachedVoices: SpeechSynthesisVoice[] = []
+
+export function initVoices(win: SpeechWindow = window as SpeechWindow): void {
+  if (win && win.speechSynthesis && typeof win.speechSynthesis.getVoices === 'function') {
+    try {
+      const v = win.speechSynthesis.getVoices()
+      if (v && v.length) cachedVoices = v
+      win.speechSynthesis.onvoiceschanged = () => {
+        try {
+          cachedVoices = win.speechSynthesis?.getVoices() ?? []
+        } catch {}
+      }
+    } catch {}
+  }
+}
+
+if (typeof window !== 'undefined') {
+  initVoices(window as SpeechWindow)
+}
+
 export function voiceAvailable(win: Window = window): boolean {
   const speech = win as SpeechWindow
   return Boolean(speech.SpeechRecognition || speech.webkitSpeechRecognition)
@@ -46,6 +66,45 @@ export function stopSpeaking(win: Window = window): void {
   }
 }
 
+export function findBestVoice(voices: SpeechSynthesisVoice[], language: 'en' | 'te' | 'hi'): SpeechSynthesisVoice | undefined {
+  if (!voices || !voices.length) return undefined
+
+  if (language === 'te') {
+    // 1. First priority: native Telugu locale
+    const teExact = voices.find(v => v.lang.toLowerCase() === 'te-in' || v.lang.toLowerCase() === 'te')
+    if (teExact) return teExact
+
+    // 2. Second priority: named Telugu or తెలుగు (Microsoft Mohan, Microsoft Shruti, Google తెలుగు)
+    const teNamed = voices.find(v => {
+      const name = v.name.toLowerCase()
+      return name.includes('telugu') || name.includes('mohan') || name.includes('shruti') || v.name.includes('తెలుగు')
+    })
+    if (teNamed) return teNamed
+
+    // 3. Third priority: Indian natural voice (shares South Asian phonetics)
+    const inVoice = voices.find(v => v.lang === 'en-IN' || v.lang === 'hi-IN' || v.name.toLowerCase().includes('india'))
+    if (inVoice) return inVoice
+  } else if (language === 'hi') {
+    const hiVoice = voices.find(v => v.lang.toLowerCase() === 'hi-in' || v.lang.toLowerCase() === 'hi' || v.name.toLowerCase().includes('hindi'))
+    if (hiVoice) return hiVoice
+  } else {
+    const enVoice = voices.find(v => v.lang === 'en-IN' || v.lang === 'en-US' || v.lang === 'en-GB')
+    if (enVoice) return enVoice
+  }
+
+  return undefined
+}
+
+export function sanitizeSpokenTelugu(raw: string): string {
+  // Cleans punctuation, technical parentheses, bullets like "01" so Telugu TTS flows naturally
+  return raw
+    .replace(/\([^\)]*\)/g, ' ') // remove parentheses content like (Alternaria, Cercospora)
+    .replace(/\b0\d\b/g, '') // remove "01", "02"
+    .replace(/[*#_~`>]/g, '') // remove markdown
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 export function speakText(
   text: string,
   language: 'en' | 'te' | 'hi' = 'en',
@@ -62,7 +121,7 @@ export function speakText(
 
   try { speech.speechSynthesis.cancel() } catch {}
 
-  const cleanText = text.replace(/[*#_~`>]/g, '').trim()
+  const cleanText = language === 'te' ? sanitizeSpokenTelugu(text) : text.replace(/[*#_~`>]/g, '').trim()
   if (!cleanText) return null
 
   try {
@@ -70,11 +129,14 @@ export function speakText(
     const utterance = new UtteranceClass(cleanText)
     const langCode = language === 'te' ? 'te-IN' : language === 'hi' ? 'hi-IN' : 'en-IN'
     utterance.lang = langCode
-    utterance.rate = options?.rate ?? (language === 'te' ? 0.9 : 1.0)
+    // 0.84 rate provides a calm, clear, natural spoken Telugu cadence
+    utterance.rate = options?.rate ?? (language === 'te' ? 0.84 : 1.0)
+    utterance.pitch = 1.0
 
     try {
-      const voices = speech.speechSynthesis.getVoices()
-      const matchedVoice = voices.find(v => v.lang === langCode || v.lang.startsWith(langCode.slice(0, 2)))
+      const liveVoices = speech.speechSynthesis.getVoices()
+      const voicesPool = liveVoices && liveVoices.length ? liveVoices : cachedVoices
+      const matchedVoice = findBestVoice(voicesPool, language)
       if (matchedVoice) {
         utterance.voice = matchedVoice
       }
