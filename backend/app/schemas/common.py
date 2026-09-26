@@ -61,3 +61,4 @@ class HealthResponse(BaseModel):
     database: str
     timestamp: datetime
     demo_mode: bool = False
+    groq_configured: bool = False

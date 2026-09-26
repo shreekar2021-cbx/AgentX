@@ -66,10 +66,11 @@ class ReportOrchestrator:
                 raise AppError(500, "report_invalid", "Report input could not be retrieved.")
 
             await progress("crop_health")
+            is_telugu = any("\u0c00" <= ch <= "\u0c7f" for ch in report.symptom_description) or (report.notes and any("\u0c00" <= ch <= "\u0c7f" for ch in report.notes))
             crop_health = await self.crop_agent.evaluate(
                 input_hash=input_hash, crop=report.crop, symptoms=report.symptom_description,
                 notes=report.notes, season=season_for(report.created_at), image=image[0],
-                mime_type=image[1], weather_context=weather_context,
+                mime_type=image[1], weather_context=weather_context, language="te" if is_telugu else "en",
             )
             await progress("nearby")
             matches = await self.nearby.matching(

@@ -12,13 +12,13 @@ router = APIRouter(prefix="/api")
 @router.get("/health", response_model=HealthResponse, tags=["system"])
 async def health(settings: Settings = Depends(get_settings)) -> HealthResponse:
     database = "local_demo" if settings.local_demo_mode else "configured" if settings.database_configured else "not_configured"
-    return HealthResponse(status="ok", environment=settings.app_env, database=database, timestamp=datetime.now(timezone.utc), demo_mode=settings.local_demo_mode)
+    return HealthResponse(status="ok", environment=settings.app_env, database=database, timestamp=datetime.now(timezone.utc), demo_mode=settings.local_demo_mode, groq_configured=settings.groq_configured)
 
 
 @router.get("/capabilities", tags=["system"])
 async def capabilities(settings: Settings = Depends(get_settings)) -> dict:
     local = settings.local_demo_mode
-    return {"capabilities": {"crop_analysis": ("mistral_with_local_fallback" if settings.mistral_api_key else "local_knowledge_only") if local else "requires_production_repository", "weather": "open_meteo_with_cache" if local else "requires_production_repository", "market": ("ogd_with_cache_and_synthetic_fallback" if settings.ogd_api_key else "dated_synthetic_fallback") if local else "requires_production_repository", "nearby_alerts": "available_local" if local else "requires_production_repository", "farm_soil": "available_local" if local else "requires_production_repository", "recommendations": "available_local" if local else "requires_production_repository", "notifications": "persistent_in_app_local" if local else "requires_production_repository", "offline_sync": "indexeddb_client_queue_with_idempotent_local_api" if local else "requires_production_repository", "voice": "browser_web_speech_optional"}}
+    return {"capabilities": {"crop_analysis": ("mistral_with_local_fallback" if settings.mistral_api_key else "local_knowledge_only") if local else "requires_production_repository", "weather": "open_meteo_with_cache" if local else "requires_production_repository", "market": ("ogd_with_cache_and_synthetic_fallback" if settings.ogd_api_key else "dated_synthetic_fallback") if local else "requires_production_repository", "nearby_alerts": "available_local" if local else "requires_production_repository", "farm_soil": "available_local" if local else "requires_production_repository", "recommendations": "available_local" if local else "requires_production_repository", "notifications": "persistent_in_app_local" if local else "requires_production_repository", "offline_sync": "indexeddb_client_queue_with_idempotent_local_api" if local else "requires_production_repository", "voice": ("groq_ai_voice_assistant" if settings.groq_configured else "browser_speech_with_fallback")}}
 
 
 def planned(feature: str):

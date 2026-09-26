@@ -1,4 +1,4 @@
-import type { AdminOverview, AnalysisEvent, ApiError, FarmProfile, FarmProfileInput, FertilizerRecommendation, HealthResponse, LiveReport, MarketEstimate, MarketEstimateInput, MarketResponse, MarketTrend, NearbyCluster, NotificationItem, PortfolioCrop, PortfolioInput, ProviderHealth, SeedRecommendation, WeatherResult } from './types'
+import type { AdminOverview, AnalysisEvent, ApiError, FarmProfile, FarmProfileInput, FertilizerRecommendation, HealthResponse, LiveReport, MarketEstimate, MarketEstimateInput, MarketResponse, MarketTrend, NearbyCluster, NotificationItem, PortfolioCrop, PortfolioInput, ProviderHealth, SeedRecommendation, TranslationRequest, TranslationResponse, VoiceAssistRequest, VoiceAssistResponse, VoiceStatusResponse, WeatherResult } from './types'
 const baseUrl = import.meta.env.VITE_API_BASE_URL ?? ''
 let accessToken: string | null = null
 export function setApiAccessToken(token: string | null) { accessToken = token }
@@ -51,6 +51,9 @@ export const api = {
   markNotificationRead: (id: string) => request<NotificationItem>(`/notifications/${encodeURIComponent(id)}/read`, { method: 'PATCH' }),
   providerHealth: () => request<ProviderHealth>('/provider-health'),
   adminOverview: () => request<AdminOverview>('/admin/overview'),
+  voiceStatus: () => request<VoiceStatusResponse>('/voice/status'),
+  voiceAssist: (payload: VoiceAssistRequest) => request<VoiceAssistResponse>('/voice/assist', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }),
+  translate: (payload: TranslationRequest) => request<TranslationResponse>('/voice/translate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }),
   async streamAnalysis(id: string, onEvent: (event: AnalysisEvent) => void): Promise<LiveReport> {
     let response: Response
     try { response = await fetch(`${baseUrl}/api/reports/${encodeURIComponent(id)}/analyze/stream`, { method: 'POST', headers: headers() }) }

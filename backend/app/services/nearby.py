@@ -17,8 +17,18 @@ class NearbyReportService:
         rows = await self.repository.recent_reports(crop, datetime.now(timezone.utc) - timedelta(days=7))
         now = datetime.now(timezone.utc)
         matches: list[NearbyMatch] = []
+        import re
         for row in rows:
-            if row["id"] == report_id or row["owner_id"] == owner_id or row["possible_problem"].casefold() != possible_problem.casefold():
+            if row["id"] == report_id or row["owner_id"] == owner_id:
+                continue
+            rp = row["possible_problem"].casefold()
+            pp = possible_problem.casefold()
+            problem_match = (rp == pp or rp in pp or pp in rp)
+            if not problem_match:
+                r_words = set(re.findall(r"[a-z]{4,}", rp))
+                p_words = set(re.findall(r"[a-z]{4,}", pp))
+                problem_match = bool(r_words and p_words and (r_words & p_words))
+            if not problem_match:
                 continue
             distance = haversine_km(latitude, longitude, row["latitude"], row["longitude"])
             if distance > radius:

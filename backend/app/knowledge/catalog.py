@@ -95,18 +95,84 @@ def _make_issue(crop: str, row: tuple[str, str, str, str, str]) -> KnowledgeIssu
 ISSUES = tuple(_make_issue(crop, row) for crop, rows in RAW_ISSUES.items() for row in rows)
 
 
+TELUGU_CROPS = {
+    "ప్రత్తి": "cotton", "పత్తి": "cotton", "వరి": "paddy", "మిరప": "chilli",
+    "మొక్కజొన్న": "maize", "పసుపు": "turmeric", "వేరుశనగ": "groundnut",
+    "కందులు": "red gram", "సోయాబీన్": "soybean", "టమాటా": "tomato",
+    "టమాట": "tomato", "ఉల్లి": "onion", "బంగాళాదుంప": "potato",
+    "గోధుమ": "wheat", "జొన్న": "sorghum", "సజ్జలు": "pearl millet",
+    "వంకాయ": "brinjal", "బెండకాయ": "okra",
+}
+
+TELUGU_KEYWORDS = {
+    "తెల్ల దోమ": "whitefly yellow sticky",
+    "దోమ": "whitefly",
+    "పచ్చ దోమ": "jassids leaf hopper",
+    "గులాబీ": "pink bollworm rosette",
+    "లద్దె పురుగు": "armyworm frass whorl",
+    "తామర": "thrips curl",
+    "ఆకు ముడత": "leaf curl",
+    "ముడత": "curl",
+    "అగ్గి తెగులు": "blast spindle lesions",
+    "బ్లాస్ట్": "blast",
+    "కాండం తొలుచు": "stem borer dead hearts",
+    "జింక్": "zinc deficiency bronze",
+    "ఆకు మచ్చ": "leaf spot circular",
+    "మచ్చ": "spots",
+    "కుళ్లు": "rot",
+    "పసుపు రంగు": "yellowing",
+    "పసుపు": "yellow",
+    "రసం పీల్చు": "sucking pest",
+}
+
+TELUGU_ISSUE_NAMES = {
+    "Rice blast": "వరి అగ్గి తెగులు (Rice Blast)",
+    "Stem borer": "కాండం తొలుచు పురుగు (Stem Borer)",
+    "Zinc deficiency": "జింక్ పోషక లోపం (Zinc Deficiency)",
+    "Whitefly activity": "తెల్ల దోమ ఉధృతి (Whitefly Infestation)",
+    "Pink bollworm": "గులాబీ రంగు కాయ తొలుచు పురుగు (Pink Bollworm)",
+    "Leaf curl syndrome": "ఆకు ముడత తెగులు (Leaf Curl Syndrome)",
+    "Fall armyworm": "పొగాకు లద్దె పురుగు (Fall Armyworm)",
+    "Northern leaf blight": "ఆకు ఎండు తెగులు (Leaf Blight)",
+    "Nitrogen deficiency": "నత్రజని లోపం (Nitrogen Deficiency)",
+    "Thrips injury": "తామర పురుగుల ఉధృతి (Thrips Injury)",
+    "Leaf curl complex": "ఆకు ముడత వైరస్ తెగులు (Leaf Curl Complex)",
+    "Anthracnose": "కాయ కుళ్లు తెగులు (Anthracnose)",
+    "Early blight": "ముందస్తు ఆకు మచ్చ తెగులు (Early Blight)",
+    "Blossom end rot": "పూత మరియు కాయ చివర కుళ్లు (Blossom End Rot)",
+    "Leaf miner": "ఆకు తొలుచు పురుగు (Leaf Miner)",
+    "Tikka leaf spot": "టిక్కా ఆకు మచ్చ తెగులు (Tikka Leaf Spot)",
+    "Iron chlorosis": "ఇనుము లోపం (Iron Chlorosis)",
+    "Pod borer": "కాయ తొలుచు పురుగు (Pod Borer)",
+    "Fusarium wilt": "ఎండు తెగులు (Fusarium Wilt)",
+    "Yellow mosaic": "పల్లాకు తెగులు / ఎల్లో మొజాయిక్ (Yellow Mosaic)",
+    "Powdery mildew": "బూడిద తెగులు (Powdery Mildew)",
+    "Stem fly": "కాండపు ఈగ (Stem Fly)",
+    "Soybean rust": "సోయాబీన్ తుప్పు తెగులు (Soybean Rust)",
+    "Rhizome rot": "దుంప కుళ్లు తెగులు (Rhizome Rot)",
+    "Leaf blotch": "ఆకు మచ్చ తెగులు (Leaf Blotch)",
+}
+
 def normalize_crop(crop: str) -> str:
-    return crop.strip().casefold().replace("pigeon pea", "red gram").replace("rice", "paddy")
+    cleaned = crop.strip().casefold()
+    for te_name, en_name in TELUGU_CROPS.items():
+        if te_name in cleaned:
+            return en_name
+    return cleaned.replace("pigeon pea", "red gram").replace("rice", "paddy")
 
 
 def match_issue(crop: str, symptoms: str) -> tuple[KnowledgeIssue | None, float]:
-    tokens = set(re.findall(r"[a-z]{3,}", symptoms.casefold()))
+    expanded_symptoms = symptoms.casefold()
+    for te_phrase, en_keywords in TELUGU_KEYWORDS.items():
+        if te_phrase in expanded_symptoms:
+            expanded_symptoms += f" {en_keywords}"
+    tokens = set(re.findall(r"[a-z]{3,}", expanded_symptoms))
     candidates = [item for item in ISSUES if item.crop == normalize_crop(crop)]
     ranked = []
     for item in candidates:
         clue_tokens = set(re.findall(r"[a-z]{3,}", " ".join((item.name, *item.symptoms)).casefold()))
         overlap = len(tokens & clue_tokens)
-        name_hit = item.name.casefold() in symptoms.casefold()
+        name_hit = item.name.casefold() in expanded_symptoms
         ranked.append((overlap + (3 if name_hit else 0), item))
     if not ranked:
         return None, 0.0
@@ -117,9 +183,21 @@ def match_issue(crop: str, symptoms: str) -> tuple[KnowledgeIssue | None, float]
     return issue, min(0.55, round(0.28 + score * 0.045, 2))
 
 
-def local_finding(crop: str, symptoms: str) -> tuple[CropHealthFinding, str | None]:
+def local_finding(crop: str, symptoms: str, language: str = "en") -> tuple[CropHealthFinding, str | None]:
+    is_telugu = language == "te" or any("\u0c00" <= ch <= "\u0c7f" for ch in symptoms)
     issue, confidence = match_issue(crop, symptoms)
     if issue is None:
+        if is_telugu:
+            return CropHealthFinding(
+                possible_problem="స్పష్టత లేని పొలం లక్షణాలు", confidence=0.2, severity=Severity.LOW,
+                symptoms=[symptoms[:250]],
+                possible_causes=["పురుగులు, తెగుళ్లు, పోషక లోపాలు లేదా వాతావరణ పరిస్థితుల వల్ల ఈ లక్షణాలు కనిపించవచ్చు."],
+                immediate_actions=["మరిన్ని మొక్కల ఆకులు, కాండం పరిశీలించి స్పష్టమైన ఫోటోలు తీయండి."],
+                precautions=["సరైన నిర్ధారణ లేకుండా ఎలాంటి రసాయన పురుగుమందులు పిచికారీ చేయవద్దు."],
+                monitoring=["రాబోయే 2-3 రోజుల్లో లక్షణాలు ఇతర మొక్కలకు విస్తరిస్తున్నాయో గమనించండి."],
+                expert_verification="ఖచ్చితమైన నిర్ధారణ మరియు సలహా కొరకు స్థానిక మండల వ్యవసాయ అధికారి (AEO/AO) ని సంప్రదించండి.",
+                spread_potential=SpreadPotential.UNKNOWN,
+            ), None
         return CropHealthFinding(
             possible_problem="Unclear field symptoms", confidence=0.2, severity=Severity.LOW,
             symptoms=[symptoms[:250]], possible_causes=["Several pest, disease, nutrient, or weather causes remain possible."],
@@ -129,6 +207,21 @@ def local_finding(crop: str, symptoms: str) -> tuple[CropHealthFinding, str | No
             expert_verification="Ask a local crop specialist to examine the plant and field context.",
             spread_potential=SpreadPotential.UNKNOWN,
         ), None
+
+    issue_name = TELUGU_ISSUE_NAMES.get(issue.name, issue.name) if is_telugu else issue.name
+    if is_telugu:
+        return CropHealthFinding(
+            possible_problem=issue_name, confidence=confidence,
+            severity=Severity.MODERATE if issue.kind != "nutrient" else Severity.LOW,
+            symptoms=[f"గమనించిన లక్షణాలు: {symptoms[:200]}"],
+            possible_causes=[f"సంభావ్య కారణం: {issue.kind} ఉధృతి.", f"వాతావరణ సున్నితత్వం: {', '.join(issue.weather_sensitivity)}."],
+            immediate_actions=["క్షేత్రంలో తెగులు లేదా పురుగుల ప్రభావాన్ని సమగ్రంగా పరిశీలించండి.", "మండల వ్యవసాయ అధికారి సూచించిన సిఫార్సులను పాటించండి."],
+            precautions=["ఇది ప్రాథమిక విశ్లేషణ మాత్రమే; తుది మందుల పిచికారీకి ముందు వ్యవసాయ నిపుణుడిని సంప్రదించండి."],
+            monitoring=["వ్యాప్తి తీవ్రతను రోజువారీగా పర్యవేక్షించండి."],
+            expert_verification="సమగ్ర సస్యరక్షణ కొరకు స్థానిక వ్యవసాయ అధికారి లేదా కృషి విజ్ఞాన కేంద్రం (KVK) సలహా తీసుకోండి.",
+            spread_potential=issue.spread_potential,
+        ), f"catalog:{CATALOG_VERSION}:{issue.crop}:{issue.name.casefold().replace(' ', '-') }"
+
     return CropHealthFinding(
         possible_problem=issue.name, confidence=confidence,
         severity=Severity.MODERATE if issue.kind != "nutrient" else Severity.LOW,

@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import router
 from app.api.intelligence import router as intelligence_router
 from app.api.phase3 import router as phase3_router
+from app.api.voice import router as voice_router
 from app.core.config import get_settings
 from app.core.errors import AppError, app_error_handler, unhandled_error_handler
 from app.core.logging import configure_logging
@@ -61,3 +62,4 @@ app.add_exception_handler(Exception, unhandled_error_handler)
 app.include_router(router)
 app.include_router(intelligence_router)
 app.include_router(phase3_router)
+app.include_router(voice_router)

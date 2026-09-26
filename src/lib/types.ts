@@ -4,8 +4,13 @@ export interface Crop { id: string; name: string; variety: string; area: number;
 export interface Alert { id: string; crop: string; title: string; district: string; distance: number; severity: Severity; time: string; lat: number; lng: number; radius: number; description: string }
 export interface Report { id: string; crop: string; title: string; date: string; status: 'Demo result' | 'Draft' | 'Waiting to sync'; severity: Severity; field: string }
 export interface Mandi { name: string; district: string; distance: number; price: number; min: number; max: number; change: number }
-export interface HealthResponse { status: 'ok'; environment: string; database: 'local_demo' | 'configured' | 'not_configured'; timestamp: string; demo_mode: boolean }
+export interface HealthResponse { status: 'ok'; environment: string; database: 'local_demo' | 'configured' | 'not_configured'; timestamp: string; demo_mode: boolean; groq_configured?: boolean }
 export interface ApiError { code: string; message: string; request_id?: string }
+export interface VoiceStatusResponse { groq_configured: boolean; groq_model: string; groq_fast_model: string; active_provider: string }
+export interface VoiceAssistRequest { query: string; language: string; crop?: string; field?: string; district?: string }
+export interface VoiceAssistResponse { reply: string; language: string; quick_actions: string[]; provider: string }
+export interface TranslationRequest { text: string; target_language: string; source_language?: string }
+export interface TranslationResponse { original: string; translated: string; target_language: string; source_language: string; provider: string }
 
 export type AIStatus = 'AI LIVE' | 'AI CACHED' | 'LOCAL KNOWLEDGE' | 'LIMITED MODE'
 export interface CropFinding { possible_problem: string; confidence: number; severity: 'low' | 'moderate' | 'high'; symptoms: string[]; possible_causes: string[]; immediate_actions: string[]; precautions: string[]; monitoring: string[]; expert_verification: string; spread_potential: 'low' | 'moderate' | 'high' | 'unknown' }

@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     market_cache_minutes: int = Field(default=60, ge=5, le=1440)
     market_timeout_seconds: float = Field(default=10, ge=2, le=30)
     market_trend_rate_limit_per_hour: int = Field(default=20, ge=1, le=200)
+    groq_api_key: str = ""
+    groq_model: str = "llama-3.3-70b-versatile"
+    groq_fast_model: str = "llama-3.1-8b-instant"
+    groq_timeout_seconds: float = Field(default=15, ge=3, le=60)
 
     @field_validator("app_cors_origins", mode="before")
     @classmethod
@@ -57,6 +61,10 @@ class Settings(BaseSettings):
     @property
     def local_demo_mode(self) -> bool:
         return self.demo_mode and self.app_env != "production"
+
+    @property
+    def groq_configured(self) -> bool:
+        return bool(self.groq_api_key and self.groq_api_key.strip())
 
 
 @lru_cache
